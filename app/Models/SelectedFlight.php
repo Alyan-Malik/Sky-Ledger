@@ -105,4 +105,38 @@ class SelectedFlight extends Model
                     ->orWhere('expires_at', '>', now());
             });
     }
+
+
+    public function getPassengerCountsAttribute(): array
+{
+    $search = $this->flightSearch;
+    
+    if ($search) {
+        return [
+            'adults' => $search->adults ?? 1,
+            'children' => $search->children ?? 0,
+            'infants' => $search->infants ?? 0,
+        ];
+    }
+    
+    // Fallback from offer_json
+    $offerData = $this->offer_json ?? [];
+    $passengers = $offerData['passengers'] ?? [];
+    
+    $adults = 0;
+    $children = 0;
+    $infants = 0;
+    
+    foreach ($passengers as $p) {
+        if (($p['type'] ?? '') === 'adult') $adults++;
+        if (($p['type'] ?? '') === 'child') $children++;
+        if (($p['type'] ?? '') === 'infant_without_seat') $infants++;
+    }
+    
+    return [
+        'adults' => max($adults, 1),
+        'children' => $children,
+        'infants' => $infants,
+    ];
+}
 }

@@ -132,44 +132,55 @@ class BookingController extends Controller
      * Update booking (only passenger details, not flight)
      */
     public function update(UpdateBookingRequest $request, int $id): JsonResponse
-    {
-        try {
-            $booking = Booking::where('created_by', auth()->id())
-                ->findOrFail($id);
+{
+    try {
+        $booking = Booking::where('created_by', auth()->id())
+            ->findOrFail($id);
 
-            // Only allow updating if booking is confirmed
-            if ($booking->booking_status === 'cancelled') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Cannot update a cancelled booking.',
-                ], 400);
-            }
-
-            $booking = $this->bookingService->updateBooking($booking, $request->validated());
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Booking updated successfully',
-                'data' => new BookingResource($booking),
-            ]);
-
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        // Only allow updating if booking is confirmed
+        if ($booking->booking_status === 'cancelled') {
             return response()->json([
                 'success' => false,
-                'message' => 'Booking not found.',
-            ], 404);
-        } catch (\Exception $e) {
-            Log::error('Booking update failed', [
-                'error' => $e->getMessage(),
-                'booking_id' => $id,
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to update booking.',
+                'message' => 'Cannot update a cancelled booking.',
             ], 400);
         }
+
+        // Log the incoming request data
+        Log::info('Booking update request', [
+            'booking_id' => $id,
+            'validated_data' => $request->validated(),
+        ]);
+
+        $booking = $this->bookingService->updateBooking($booking, $request->validated());
+
+        Log::info('Booking updated successfully', [
+            'booking_id' => $booking->booking_id,
+            'updated_fields' => array_keys($request->validated()),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Booking updated successfully',
+            'data' => new BookingResource($booking),
+        ]);
+
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Booking not found.',
+        ], 404);
+    } catch (\Exception $e) {
+        Log::error('Booking update failed', [
+            'error' => $e->getMessage(),
+            'booking_id' => $id,
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to update booking.',
+        ], 400);
     }
+}
 
     /**
      * Cancel booking
