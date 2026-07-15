@@ -67,6 +67,13 @@ class UpdateBookingRequest extends FormRequest
             'meal_preference' => ['nullable', 'string', 'max:100'],
             'special_assistance' => ['nullable', 'string', 'max:500'],
             'remarks' => ['nullable', 'string', 'max:1000'],
+
+            'seat_preference' => ['nullable', Rule::in(['window', 'aisle', 'middle'])],
+'extra_legroom' => ['nullable', 'boolean'],
+'checked_baggage_kg' => ['nullable', 'integer', 'min:15', 'max:40'],
+'hand_luggage_kg' => ['nullable', 'integer', 'min:5', 'max:10'],
+
+'economy_delight' => ['nullable', 'boolean'],
         ];
     }
 

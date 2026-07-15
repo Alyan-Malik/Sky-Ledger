@@ -59,6 +59,13 @@ class Booking extends Model
         // Status
         'booking_status',
         'ticket_status',
+
+        'seat_preference',
+        'extra_legroom',
+        'checked_baggage_kg',
+        'hand_luggage_kg',
+
+        'economy_delight',
     ];
 
     protected $casts = [
@@ -68,6 +75,10 @@ class Booking extends Model
         'checked_baggage_count' => 'integer',
         'hand_luggage_count' => 'integer',
         'priority_pass' => 'boolean',
+        'extra_legroom' => 'boolean',
+        'checked_baggage_kg' => 'integer',
+        'hand_luggage_kg' => 'integer',
+        'economy_delight' => 'boolean',
     ];
 
     protected $attributes = [

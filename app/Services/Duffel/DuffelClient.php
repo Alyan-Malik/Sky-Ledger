@@ -55,78 +55,83 @@ class DuffelClient
      * Make HTTP request with error handling and retries
      */
     private function request(string $method, string $endpoint, array $params = [], array $data = []): array
-    {
-        $url = "{$this->baseUrl}/{$endpoint}";
-        
-        $this->logRequest($method, $url, $params, $data);
+{
+    $url = "{$this->baseUrl}/{$endpoint}";
+    
+    $this->logRequest($method, $url, $params, $data);
 
-        try {
-            $httpClient = Http::withHeaders($this->defaultHeaders)
-                ->timeout($this->timeout)
-                ->connectTimeout($this->connectTimeout);
+    try {
+        $httpClient = Http::withHeaders($this->defaultHeaders)
+            ->timeout($this->timeout)
+            ->connectTimeout($this->connectTimeout);
 
-            // Don't use retry for POST requests that create resources
-            if ($method === 'GET') {
-                $httpClient->retry(
-                    config('duffel.http.retry.times', 3),
-                    config('duffel.http.retry.sleep', 1000),
-                    function ($exception, $request) {
-                        return $this->shouldRetry($exception, $request);
-                    }
-                );
-            }
-
-            $response = $method === 'GET' 
-                ? $httpClient->get($url, $params)
-                : $httpClient->post($url, $data);
-
-            $this->logResponse($response);
-
-            if ($response->successful()) {
-                $responseData = $response->json();
-                
-                // Log response structure for debugging
-                if (config('duffel.logging.log_requests', false)) {
-                    Log::debug('Duffel API Response Structure', [
-                        'status' => $response->status(),
-                        'has_data_key' => isset($responseData['data']),
-                        'data_keys' => isset($responseData['data']) ? array_keys($responseData['data']) : [],
-                    ]);
+        // Only retry for GET requests
+        if ($method === 'GET') {
+            $httpClient->retry(
+                config('duffel.http.retry.times', 2), // Reduced retries
+                config('duffel.http.retry.sleep', 1000),
+                function ($exception, $request) {
+                    return $this->shouldRetry($exception, $request);
                 }
-                
-                return $responseData;
+            );
+        }
+
+        $response = $method === 'GET' 
+            ? $httpClient->get($url, $params)
+            : $httpClient->post($url, $data);
+
+        $this->logResponse($response);
+
+        if ($response->successful()) {
+            $responseData = $response->json();
+            
+            if (!is_array($responseData)) {
+                throw new DuffelApiException('Invalid response format from flight service.');
             }
+            
+            return $responseData;
+        }
 
-            $this->handleErrorResponse($response);
+        $this->handleErrorResponse($response);
 
-        } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            Log::error('Duffel API connection error', [
-                'url' => $url,
-                'error' => $e->getMessage(),
-            ]);
+    } catch (\Illuminate\Http\Client\ConnectionException $e) {
+        \Log::error('Duffel API connection error', [
+            'url' => $url,
+            'error' => $e->getMessage(),
+        ]);
+        throw new DuffelApiException(
+            'Unable to connect to flight service. Please check your internet connection and try again.',
+            ['url' => $url],
+            $e
+        );
+    } catch (\Illuminate\Http\Client\RequestException $e) {
+        // Handle timeout specifically
+        if (str_contains($e->getMessage(), 'timed out')) {
             throw new DuffelApiException(
-                'Unable to connect to flight service. Please try again.',
+                'Flight search is taking too long. Please try with different dates or destinations.',
                 ['url' => $url],
                 $e
             );
-        } catch (\Exception $e) {
-            if (!$e instanceof DuffelApiException) {
-                Log::error('Duffel API unexpected error', [
-                    'url' => $url,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                ]);
-                throw new DuffelApiException(
-                    'An unexpected error occurred. Please try again.',
-                    ['url' => $url],
-                    $e
-                );
-            }
-            throw $e;
         }
-
-        throw new DuffelApiException('Flight service request failed.');
+        $this->handleErrorResponse($e->response ?? null);
+    } catch (\Exception $e) {
+        if (!$e instanceof DuffelApiException) {
+            \Log::error('Duffel API unexpected error', [
+                'url' => $url,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw new DuffelApiException(
+                'An unexpected error occurred while searching flights. Please try again.',
+                ['url' => $url],
+                $e
+            );
+        }
+        throw $e;
     }
+
+    throw new DuffelApiException('Flight service request failed. Please try again.');
+}
 
     // ... rest of the methods remain the same
     private function handleErrorResponse(?Response $response): void

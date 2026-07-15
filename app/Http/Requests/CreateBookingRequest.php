@@ -65,6 +65,14 @@ class CreateBookingRequest extends FormRequest
             'meal_preference' => ['nullable', 'string', 'max:100'],
             'special_assistance' => ['nullable', 'string', 'max:500'],
             'remarks' => ['nullable', 'string', 'max:1000'],
+
+            // Add these rules to the rules() method:
+'seat_preference' => ['nullable', Rule::in(['window', 'aisle', 'middle'])],
+'extra_legroom' => ['required', 'boolean'],
+'checked_baggage_kg' => ['required', 'integer', 'min:15', 'max:40'],
+'hand_luggage_kg' => ['required', 'integer', 'min:5', 'max:10'],
+
+'economy_delight' => ['required', 'boolean'],
         ];
     }
 

@@ -48,15 +48,20 @@ class BookingResource extends JsonResource
             ],
             
             'preferences' => [
-                'seat_number' => $this->seat_number,
-                'meal_preference' => $this->meal_preference,
-                'special_assistance' => $this->special_assistance,
-            ],
-            
-            'baggage' => [
-                'checked_count' => (int)($this->checked_baggage_count ?? 0),
-                'hand_luggage_count' => (int)($this->hand_luggage_count ?? 0),
-            ],
+    'seat_number' => $this->seat_number,
+    'seat_preference' => $this->seat_preference,
+    'extra_legroom' => (bool)($this->extra_legroom ?? false),
+    'economy_delight' => (bool)($this->economy_delight ?? false), // NEW
+    'meal_preference' => $this->meal_preference,
+    'special_assistance' => $this->special_assistance,
+],
+
+'baggage' => [
+    'checked_count' => (int)($this->checked_baggage_count ?? 0),
+    'checked_kg' => (int)($this->checked_baggage_kg ?? 23), // NEW
+    'hand_luggage_count' => (int)($this->hand_luggage_count ?? 0),
+    'hand_luggage_kg' => (int)($this->hand_luggage_kg ?? 7), // NEW
+],
             
             'assistance' => [
                 'wheelchair' => $this->wheelchair_required ?? 'none',

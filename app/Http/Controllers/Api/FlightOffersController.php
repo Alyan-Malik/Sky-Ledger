@@ -22,63 +22,86 @@ class FlightOffersController extends Controller
      * Search flights and return offers
      */
     public function search(FlightSearchRequest $request): JsonResponse
-    {
-        try {
-            // Create flight search record
-            $flightSearch = FlightSearch::create(
-                $request->validatedForStorage()
-            );
+{
+    try {
+        // Create flight search record
+        $flightSearch = FlightSearch::create(
+            $request->validatedForStorage()
+        );
 
-            // Load relationships
-            $flightSearch->load(['originAirport', 'destinationAirport']);
+        // Load relationships
+        $flightSearch->load(['originAirport', 'destinationAirport']);
 
-            // Search flights via Duffel
-            $offers = $this->duffelService->searchOffers($flightSearch);
+        // Search flights via Duffel
+        $offers = $this->duffelService->searchOffers($flightSearch);
 
-            // Check if offers were found
-            if (empty($offers)) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'No flights found for the selected criteria.',
-                    'data' => [
-                        'search' => new FlightSearchResource($flightSearch),
-                        'offers' => [],
-                    ],
-                ]);
-            }
-
+        // Check if offers were found
+        if (empty($offers)) {
             return response()->json([
                 'success' => true,
-                'message' => count($offers) . ' flights found',
+                'message' => 'No flights found for the selected criteria.',
                 'data' => [
                     'search' => new FlightSearchResource($flightSearch),
-                    'offers' => $offers,
+                    'offers' => [],
                 ],
             ]);
-
-        } catch (DuffelException $e) {
-            Log::error('Duffel exception in search', [
-                'message' => $e->getMessage(),
-                'code' => $e->getCode(),
-                'duffel_status' => $e->getDuffelStatusCode(),
-            ]);
-            
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], $e->getDuffelStatusCode() ?? 500);
-        } catch (\Exception $e) {
-            Log::error('Flight search failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to search flights. Please try again later.',
-            ], 500);
         }
+
+        return response()->json([
+            'success' => true,
+            'message' => count($offers) . ' flights found',
+            'data' => [
+                'search' => new FlightSearchResource($flightSearch),
+                'offers' => $offers,
+            ],
+        ]);
+
+    } catch (\App\Exceptions\DuffelRateLimitException $e) {
+        \Log::warning('Duffel rate limit hit', [
+            'message' => $e->getMessage(),
+            'retry_after' => $e->getRetryAfter(),
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'Too many requests. Please wait a moment and try again.',
+            'retry_after' => $e->getRetryAfter(),
+        ], 429);
+        
+    } catch (\App\Exceptions\DuffelApiException $e) {
+        \Log::error('Duffel API error in search', [
+            'message' => $e->getMessage(),
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage(),
+        ], 502);
+        
+    } catch (\App\Exceptions\DuffelException $e) {
+        \Log::error('Duffel exception in search', [
+            'message' => $e->getMessage(),
+            'code' => $e->getCode(),
+            'duffel_status' => $e->getDuffelStatusCode(),
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage(),
+        ], $e->getDuffelStatusCode() ?? 500);
+        
+    } catch (\Exception $e) {
+        \Log::error('Flight search failed', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to search flights. Please try again later.',
+        ], 500);
     }
+}
 
     /**
      * Get offer details

@@ -147,85 +147,138 @@ class SelectedFlightResource extends JsonResource
      * Extract return flight data from offer_json
      */
     private function extractReturnFlight(?array $offerData): ?array
-    {
-        if (!$offerData) return null;
+{
+    if (!$offerData || !is_array($offerData)) return null;
 
+    try {
         $returnSlice = null;
         $returnSegments = [];
 
         // Check return_slice first
         if (isset($offerData['return_slice']) && !empty($offerData['return_slice'])) {
-            $returnSlice = $offerData['return_slice'];
-            $returnSegments = $returnSlice['segments'] ?? [];
+            if (is_array($offerData['return_slice'])) {
+                $returnSlice = $offerData['return_slice'];
+                $returnSegments = $returnSlice['segments'] ?? [];
+            }
         } 
         // Check slices array for round trip
         elseif (isset($offerData['slices']) && is_array($offerData['slices']) && count($offerData['slices']) > 1) {
-            $returnSlice = $offerData['slices'][1];
-            $returnSegments = $returnSlice['segments'] ?? [];
+            $returnSlice = $offerData['slices'][1] ?? null;
+            if ($returnSlice && is_array($returnSlice)) {
+                $returnSegments = $returnSlice['segments'] ?? [];
+            }
         }
 
-        if (!$returnSlice) return null;
+        // If no return slice found, it's a one-way flight
+        if (!$returnSlice || !is_array($returnSlice)) {
+            return null;
+        }
 
-        $firstSegment = !empty($returnSegments) ? $returnSegments[0] : [];
-        $lastSegment = !empty($returnSegments) ? end($returnSegments) : $firstSegment;
+        // Safely get first and last segments
+        $firstSegment = !empty($returnSegments) && is_array($returnSegments[0]) ? $returnSegments[0] : [];
+        $lastSegment = !empty($returnSegments) ? (end($returnSegments) ?: $firstSegment) : $firstSegment;
+        
+        if (!is_array($firstSegment)) $firstSegment = [];
+        if (!is_array($lastSegment)) $lastSegment = [];
 
-        // Extract origin/destination safely
-        $originIata = $returnSlice['origin']['iata_code'] 
-            ?? $returnSlice['origin']['iata'] 
-            ?? $firstSegment['origin']['iata_code'] 
-            ?? $this->destination_iata 
-            ?? '???';
-        $originCity = $returnSlice['origin']['city_name'] 
-            ?? $returnSlice['origin']['city'] 
-            ?? $firstSegment['origin']['city_name'] 
-            ?? $this->destination_city 
-            ?? '';
-        $originAirport = $returnSlice['origin']['name'] 
-            ?? $returnSlice['origin']['airport'] 
-            ?? $firstSegment['origin']['name'] 
-            ?? $this->destination_airport 
-            ?? '';
+        // Safely extract airport data with multiple fallbacks
+        $originIata = $this->safeGetAirportCode($returnSlice, 'origin', $firstSegment, 'origin', $this->destination_iata);
+        $originCity = $this->safeGetAirportField($returnSlice, 'origin', $firstSegment, 'origin', 'city', $this->destination_city);
+        $originAirport = $this->safeGetAirportField($returnSlice, 'origin', $firstSegment, 'origin', 'airport', $this->destination_airport);
 
-        $destIata = $returnSlice['destination']['iata_code'] 
-            ?? $returnSlice['destination']['iata'] 
-            ?? $lastSegment['destination']['iata_code'] 
-            ?? $this->origin_iata 
-            ?? '???';
-        $destCity = $returnSlice['destination']['city_name'] 
-            ?? $returnSlice['destination']['city'] 
-            ?? $lastSegment['destination']['city_name'] 
-            ?? $this->origin_city 
-            ?? '';
-        $destAirport = $returnSlice['destination']['name'] 
-            ?? $returnSlice['destination']['airport'] 
-            ?? $lastSegment['destination']['name'] 
-            ?? $this->origin_airport 
-            ?? '';
+        $destIata = $this->safeGetAirportCode($returnSlice, 'destination', $lastSegment, 'destination', $this->origin_iata);
+        $destCity = $this->safeGetAirportField($returnSlice, 'destination', $lastSegment, 'destination', 'city', $this->origin_city);
+        $destAirport = $this->safeGetAirportField($returnSlice, 'destination', $lastSegment, 'destination', 'airport', $this->origin_airport);
+
+        // Get departure/arrival times safely
+        $departureTime = $returnSlice['departure_time'] 
+            ?? $returnSlice['departure'] 
+            ?? $firstSegment['departing_at'] 
+            ?? $firstSegment['departure_time'] 
+            ?? null;
+            
+        $arrivalTime = $returnSlice['arrival_time'] 
+            ?? $returnSlice['arrival'] 
+            ?? $lastSegment['arriving_at'] 
+            ?? $lastSegment['arrival_time'] 
+            ?? null;
+
+        // Get flight number safely
+        $flightNumber = $returnSlice['flight_number'] 
+            ?? $firstSegment['marketing_carrier_flight_number'] 
+            ?? $firstSegment['operating_carrier_flight_number']
+            ?? $firstSegment['flight_number']
+            ?? $this->flight_number;
 
         return [
             'origin' => [
-                'iata' => strtoupper($originIata),
-                'city' => $originCity,
-                'airport' => $originAirport,
+                'iata' => strtoupper($originIata ?: '???'),
+                'city' => $originCity ?: '',
+                'airport' => $originAirport ?: '',
             ],
             'destination' => [
-                'iata' => strtoupper($destIata),
-                'city' => $destCity,
-                'airport' => $destAirport,
+                'iata' => strtoupper($destIata ?: '???'),
+                'city' => $destCity ?: '',
+                'airport' => $destAirport ?: '',
             ],
-            'departure_time' => $returnSlice['departure_time'] 
-                ?? $firstSegment['departing_at'] 
-                ?? null,
-            'arrival_time' => $returnSlice['arrival_time'] 
-                ?? $lastSegment['arriving_at'] 
-                ?? null,
+            'departure_time' => $departureTime,
+            'arrival_time' => $arrivalTime,
             'duration' => $returnSlice['duration'] ?? '',
-            'stops' => $returnSlice['stops'] ?? (count($returnSegments) - 1),
-            'flight_number' => $returnSlice['flight_number'] 
-                ?? $firstSegment['marketing_carrier_flight_number'] 
-                ?? $firstSegment['flight_number'] 
-                ?? $this->flight_number,
-            'segments' => $this->normalizeSegments($returnSegments),
+            'stops' => (int)($returnSlice['stops'] ?? (count($returnSegments) - 1)),
+            'flight_number' => $flightNumber,
+            'segments' => $this->normalizeSegments(is_array($returnSegments) ? $returnSegments : []),
         ];
+    } catch (\Exception $e) {
+        \Log::error('Error extracting return flight', [
+            'error' => $e->getMessage(),
+            'selected_flight_id' => $this->id,
+        ]);
+        return null;
     }
+}
+
+
+private function safeGetAirportCode(array $slice, string $sliceKey, array $segment, string $segKey, ?string $fallback): ?string
+{
+    $sliceData = $slice[$sliceKey] ?? [];
+    if (!is_array($sliceData)) $sliceData = [];
+    
+    $segData = $segment[$segKey] ?? [];
+    if (!is_array($segData)) $segData = [];
+
+    return $sliceData['iata_code'] 
+        ?? $sliceData['iata'] 
+        ?? $segData['iata_code'] 
+        ?? $segData['iata'] 
+        ?? $fallback;
+}
+
+
+private function safeGetAirportField(array $slice, string $sliceKey, array $segment, string $segKey, string $field, ?string $fallback): ?string
+{
+    $sliceData = $slice[$sliceKey] ?? [];
+    if (!is_array($sliceData)) $sliceData = [];
+    
+    $segData = $segment[$segKey] ?? [];
+    if (!is_array($segData)) $segData = [];
+
+    $fieldMap = [
+        'city' => ['city_name', 'city'],
+        'airport' => ['name', 'airport'],
+    ];
+
+    $keys = $fieldMap[$field] ?? [$field];
+
+    foreach ($keys as $key) {
+        if (isset($sliceData[$key]) && is_string($sliceData[$key]) && !empty($sliceData[$key])) {
+            return $sliceData[$key];
+        }
+        if (isset($segData[$key]) && is_string($segData[$key]) && !empty($segData[$key])) {
+            return $segData[$key];
+        }
+    }
+
+    return $fallback;
+}
+
 }

@@ -71,6 +71,13 @@ class BookingService
                 // Status
                 'booking_status' => 'confirmed',
                 'ticket_status' => 'generated',
+
+                'seat_preference' => $validatedData['seat_preference'] ?? null,
+'extra_legroom' => $validatedData['extra_legroom'] ?? false,
+'checked_baggage_kg' => $validatedData['checked_baggage_kg'] ?? 23,
+'hand_luggage_kg' => $validatedData['hand_luggage_kg'] ?? 7,
+
+'economy_delight' => $validatedData['economy_delight'] ?? false,
             ]);
 
             // Update selected flight status
@@ -138,6 +145,11 @@ class BookingService
             'meal_preference',
             'special_assistance',
             'remarks',
+            'seat_preference',
+'extra_legroom',
+'checked_baggage_kg',
+'hand_luggage_kg',
+'economy_delight',
         ];
 
         foreach ($fields as $field) {
